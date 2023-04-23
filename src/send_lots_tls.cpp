@@ -141,11 +141,11 @@ class LoggingHandler : public proton::messaging_handler
       conn_options.password (password);
 
       conn_options.sasl_allowed_mechs ("PLAIN");
-      //
-      // We don't need to allow insecure authentication even though we're
+      
+      // We don't need to forcibly allow insecure authentication mechanisms
+      // in this example, even though we're
       // using SASL-PLAIN, because this is a TLS connection 
       //conn_options.sasl_allow_insecure_mechs (true);
-
 
       // You might need to change the path to the server's public key
       //   certificate

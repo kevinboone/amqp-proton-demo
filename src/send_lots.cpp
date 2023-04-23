@@ -28,9 +28,13 @@
  */
 class LoggingHandler : public proton::messaging_handler 
   {
-  std::string address;
-  std::string user;
-  std::string password;
+  protected:
+    std::string address;
+    std::string user;
+    std::string password;
+    int sent;
+    int number_to_send;
+    bool closed;
 
   public:
     LoggingHandler (const std::string &address, 
@@ -45,10 +49,6 @@ class LoggingHandler : public proton::messaging_handler
       this->password = password;
       }
 
-  protected:
-    int sent;
-    int number_to_send;
-    bool closed;
 
   protected:
     // Note: in principle, we should invoke the base class method in
@@ -83,6 +83,14 @@ class LoggingHandler : public proton::messaging_handler
               stop. However, at the point we call close(), there are still
               unsettled messages. The container will not stop until these
               have all been processed. */
+
+        // We can close the sender and the session, as well as the connection,
+        //   and this will change the performative frames that are sent
+        //   to the broker. However, the specification does not require us
+        //   to be this orderly, and it doesn't change the broker behaviour.
+        //t.sender().close();
+        //t.session().close();
+        
         t.connection().close();
         closed = true;
         }
@@ -108,7 +116,10 @@ class LoggingHandler : public proton::messaging_handler
       // Oddly, even if we set the allowed mechanisms to be PLAIN and
       //   nothing else, the container will still attempt an anonymous
       //   connection before it sends the authentication credentials
-      conn_options.sasl_allowed_mechs ("PLAIN");
+      // Still, we need to add ANONYMOUS explicitly if we actually want
+      //   to allow anonymous connection. Note that this list is
+      //   space-separated, not comma-separated. 
+      conn_options.sasl_allowed_mechs ("ANONYMOUS PLAIN");
       // Need to allow insecure authentication if we will be sending
       //   credentials over a non-TLS connection. 
       conn_options.sasl_allow_insecure_mechs (true);
@@ -135,7 +146,7 @@ class LoggingHandler : public proton::messaging_handler
       //   may fit into a single TCP frame
       // The messages are not actually sent until this method finishes,
       //   whether there is credit or not
-      while (s.credit() && (sent < number_to_send))
+      while (s.credit() > 0 && (sent < number_to_send))
         {
         std::cout << "Sending message" << std::endl;
         proton::message msg ("Hello, world");
@@ -152,7 +163,7 @@ class LoggingHandler : public proton::messaging_handler
   };
 
 
-int main(int argc, char **argv) 
+int main (int argc, char **argv) 
   {
   try 
     {

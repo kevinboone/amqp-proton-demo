@@ -10,6 +10,10 @@
     "foo" (see on_receiver_open). If the sender tries to attach to
     any other address, or connect as a consumer, an error will be
     raised, which should be communicated to the client. 
+
+  It's also interesting to see what happens if this server rejects an
+    inbound message. JMS clients, in particular, are unused to this kind of
+    behaviour, and will probably behave badly.
  */ 
 
 #include <unistd.h>
@@ -81,7 +85,8 @@ class ReceiveHandler : public proton::messaging_handler
 
     void on_receiver_open (proton::receiver &r) override 
       { 
-      LOG_FUNC;  proton::messaging_handler::on_receiver_open (r);
+      LOG_FUNC;  
+      proton::messaging_handler::on_receiver_open (r);
       std::string address = r.target().address();
       std::cout << "target address: " << address << std::endl;
       if (address != "foo")
@@ -111,9 +116,20 @@ class ReceiveHandler : public proton::messaging_handler
       {
       LOG_FUNC;
       std::cout << msg.body() << std::endl;
-      //d.reject();
+      //d.reject(); // What happens if we reject? A JMS client, in particular,
+                  //    will probably behave badly
       }
 
+    /** If we're going to be experimenting with things like rejecting messages,
+          we need to override on_transport_error() so that bad behaviour of
+          the sending client doesn't lead to the connection (and thus container)
+          being shut down. */
+    void on_transport_error (proton::transport &t) override
+      {
+      LOG_FUNC;
+      }
+
+    /** In on_container_start, we just start the listener. */
     void on_container_start (proton::container &c) override 
       {
       LOG_FUNC;

@@ -1,33 +1,8 @@
 /*
-  receive_lots_multiple_consumers.cpp
+  receive_lots_multiple_connections.cpp
 
-  This example demonstrates how to consume from a broker address using
-  two consumers (links, in AMQP terminology). Because there are two
-  consumers, this example can illustrate how to use queue-like and
-  topic-like consumption in Proton. If you define the TOPIC macro, 
-  topic-like consumption will be enabled.  
-
-  The difference is visible in the logging -- with queue-like consumption
-  the two consumers will get a message turn-by-turn. With topic-like
-  consumption, both consumers will get copies of the same message. So,
-  by placing a single message on the address, and watching how the
-  consumers are invoked, we can see the difference in behaviour.
-
-  This example can also demonstrate how to consume from multiple, different
-  addresses on the same broker. 
-  
-  Be aware that Proton does not know what a 'queue' is, nor a 'topic'. 
-  It just asks the broker to behave in a specific way. The Proton
-  code will not _create_ a topic on the broker, if a queue already 
-  exists with the same name. In that situation, you might get this
-  failure:
-
-    amqp:illegal-state: Address foo is not configured for topic support
-
-  The solution is to define the topic administrative. Alternatively,
-  if auto-creation is enabled, attach a Java client to the topic with
-  the required name.
-
+  This example demonstrates how to consume from multiple address on the 
+  same broker, optionally using different threads. 
 */ 
 
 #include <unistd.h>
@@ -43,12 +18,11 @@
 #include <proton/delivery.hpp>
 #include <proton/tracker.hpp>
 #include <iostream>
+#include <thread>
 
 /* Define TOPIC to use topic-style (multicast) messaging. Proton does not
    know what this means -- it just requests a specific capability from
    the broker. */
-
-//#define TOPIC
 
 #define BOLD_ON "\x1B[1m"
 #define BOLD_OFF "\x1B[0m"
@@ -82,6 +56,23 @@ class LoggingHandler : public proton::messaging_handler
       this->host_and_port = host_and_port;
       }
 
+    void connect_to_address (proton::container &c, const std::string &host_and_port)
+      {
+      LOG_FUNC;
+      proton::connection_options conn_options (*this);
+      conn_options.user (user);
+      conn_options.password (password);
+      // Oddly, even if we set the allowed mechanisms to be PLAIN and
+      //   nothing else, the container will still attempt an anonymous
+      //   connection before it sends the authentication credentials
+      conn_options.sasl_allowed_mechs ("PLAIN");
+      // Need to allow insecure authentication if we will be sending
+      //   credentials over a non-TLS connection. 
+      conn_options.sasl_allow_insecure_mechs (true);
+      c.connect (host_and_port, conn_options);
+      // If an exception is thrown here, the container will stop
+      }
+
   protected:
     // Note: in principle, we should invoke the base class method in
     //   all these on_xxx methods. I happen to know that they don't
@@ -109,42 +100,14 @@ class LoggingHandler : public proton::messaging_handler
     void on_connection_open (proton::connection &c) override 
       { 
       LOG_FUNC;
-
-      proton::receiver_options recv_options;
-      proton::source_options source_options;
-#ifdef TOPIC
-      // Request the 'topic' capability of the broker. Other possibilities
-      //   are 'shared' and 'global'
-      std::vector<proton::symbol> caps { "topic" };
-      source_options.capabilities (caps);
-#endif
-      recv_options.source (source_options);
-
-      // Create two receivers
-      std::cout << "creating receivers" << std::endl;
-      c.open_receiver (address, recv_options);
-      std::cout << "created receiver 1" << std::endl;
-      c.open_receiver (address, recv_options);
-      std::cout << "created receiver 2" << std::endl;
-      LOG_FUNC; 
+      c.open_receiver (address);
+      std::cout << "created receiver" << std::endl;
       }
 
     /** on_container_start: create a connection (only). */
     void on_container_start (proton::container &c) override 
       {
       LOG_FUNC;
-      proton::connection_options conn_options;
-      conn_options.user (user);
-      conn_options.password (password);
-      // Oddly, even if we set the allowed mechanisms to be PLAIN and
-      //   nothing else, the container will still attempt an anonymous
-      //   connection before it sends the authentication credentials
-      conn_options.sasl_allowed_mechs ("PLAIN");
-      // Need to allow insecure authentication if we will be sending
-      //   credentials over a non-TLS connection. 
-      conn_options.sasl_allow_insecure_mechs (true);
-      c.connect (host_and_port, conn_options);
-      // If an exception is thrown here, the container will stop
       }
 
     /** Messages from both consumers will end up in the same on_message()
@@ -153,7 +116,12 @@ class LoggingHandler : public proton::messaging_handler
       {
       LOG_FUNC;
       received++;
-      std::cout << "received by " << d.receiver() << std::endl;
+      // Let's print the current thread ID as well as other information, so we
+      //   can prove that the different addresses are being handled on different
+      //   threads (if we have configured multiple theads when running the
+      //   container)
+      std::cout << "received on address " << address << " by " 
+        << d.receiver() << " on thread " << std::this_thread::get_id() << std::endl;
       std::cout << "total messages " << received << std::endl;
       if (received == number_to_receive)
         {
@@ -168,14 +136,22 @@ int main(int argc, char **argv)
   try 
     {
     std::string host_and_port = "127.0.0.1:5672";
-    std::string address = "foo";
+    std::string address1 = "foo";
+    std::string address2 = "bar";
     std::string user = "admin";
     std::string password = "admin";
     int total = 10;
 
-    LoggingHandler h (host_and_port, address, user, password, total);
-    proton::container container (h);
-    container.run();
+    LoggingHandler h1 (host_and_port, address1, user, password, total);
+    LoggingHandler h2 (host_and_port, address2, user, password, total);
+    proton::container container;
+    h1.connect_to_address (container, host_and_port);
+    h2.connect_to_address (container, host_and_port);
+    //container.run ();
+    // If we have multiple connections, we can increase the number of threads in
+    //   the container. However, the container _can_ service multiple connections
+    //   on the same thread
+    container.run (2);
     } 
   catch (const std::exception& e) 
     {

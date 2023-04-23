@@ -35,12 +35,18 @@ in each file.
 `send_lots` -- send a sequence of messages to the same address on a broker
 
 `receive_lots` -- receive a sequence of messages from the same address on a
-broker
+broker. Demonstrates also how to iterate properties and annotations.
 
 `receive_lots_multiple_consumers` -- receive a sequence of messages from the 
 same address on a broker, using two different consumers (links) in the same
 session. The example also shows how a Proton application might request
 'topic-like' or 'queue-like' behaviour from the message broker. 
+
+`receive_lots_multiple_connections` -- receive a sequence of messages from the 
+two different addresses on a broker, using two different connections and sessions. 
+Unlike `receive_lots_multiple_consumers`, this version opens the possibility of
+defining different handlers for each address (which is not demonstrated directly)
+and using multiple threads per address (which is)
 
 `server` -- a direct receiver. Listens for incoming connections, and accepts
 messages on address `foo`. Shows some basic error handling

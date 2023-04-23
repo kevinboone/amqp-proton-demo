@@ -5,6 +5,8 @@
     the PNM_TRACE_FRAME environment variable set can yield some insight
     into how Proton interacts with the AMQP wire protocol. 
 
+  This program also demonstrates how to iterate properties and annotations.
+
   Broker settings are in main(), at the end.
 */ 
 
@@ -19,6 +21,7 @@
 #include <proton/messaging_handler.hpp>
 #include <proton/delivery.hpp>
 #include <proton/tracker.hpp>
+#include <proton/types.hpp>
 #include <iostream>
 
 #define BOLD_ON "\x1B[1m"
@@ -108,11 +111,38 @@ class LoggingHandler : public proton::messaging_handler
       // If an exception is thrown here, the container will stop
       }
 
+    /** on_message is called each time a new message is received. */
     void on_message (proton::delivery &d, proton::message &m) override 
       {
       LOG_FUNC;
       received++;
       std::cout << "Received: " << m.body() << std::endl;
+
+      // Dump some annotations and properties. Note that Proton uses its
+      //   own 'map' type, which has no iterators. To iterate the 
+      //   annotations/properties, we have to convert the Proton-specific
+      //   map to a std::map, using proton::get or proton::coerce. The
+      //   latter is more flexible, particularly if you don't know the 
+      //   exact types.
+
+      proton::message::annotation_map &amp = m.message_annotations();
+      std::map<std::string, proton::scalar> ams;
+      proton::coerce (amp, ams);
+      for (std::map<std::string, proton::scalar>::iterator i = ams.begin(); \
+              i != ams.end(); ++i)
+        std::cout << "annotation[" << i->first << "]=" 
+                << i->second << std::endl;
+
+      proton::message::property_map &pmp = m.properties();
+      std::map<std::string, proton::scalar> pms;
+      proton::coerce (pmp, pms);
+      for (std::map<std::string, proton::scalar>::iterator i = pms.begin(); \
+              i != pms.end(); ++i)
+        std::cout << "property[" << i->first << "]=" 
+                << i->second << std::endl;
+
+      std::cout << std::endl;
+
       if (received == number_to_receive)
         {
         // This will only shut down the container if there is only one

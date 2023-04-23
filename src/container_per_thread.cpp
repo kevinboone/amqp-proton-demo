@@ -19,7 +19,7 @@
 
  With later C++ versions, most of the Proton artefacts are thread-safe,
  because the container maintains an internal thread pool for connections.
- 
+
  Kevin Boone, April 2022 
 */
 
